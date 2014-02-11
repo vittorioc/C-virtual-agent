@@ -17,6 +17,8 @@
 #define DIM_BUFFER 1000
 #define POISON_ID -1
 
+#define AGENT_NUMBER 2
+
 struct msg_t {
     int msg_id;
     int msg_time;
@@ -728,7 +730,7 @@ static void *runDispatcher(void *_parametri_dispatcher) {
 
     char dispatcher_log_file_name[FILENAME_MAX];
 
-    _dispatcher_adjacency_matrix = gsl_matrix_alloc(6, 6);
+    _dispatcher_adjacency_matrix = gsl_matrix_alloc(AGENT_NUMBER, AGENT_NUMBER);
     dispatcher_adjacency_matrix_file = fopen("adjacency_matrix.txt", "r");
     gsl_matrix_fscanf(dispatcher_adjacency_matrix_file, _dispatcher_adjacency_matrix);
     fclose(dispatcher_adjacency_matrix_file);
@@ -943,7 +945,7 @@ void *runRouter(void *_parametri_router) {
 
     fprintf(router_log, ": Memoria:\n");
 
-    _router_agents_number = 6;
+    _router_agents_number = AGENT_NUMBER;
 
     fprintf(router_log, ": > _router_agents_number = %d\n", _router_agents_number);
 

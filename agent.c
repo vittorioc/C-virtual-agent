@@ -13,9 +13,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <gsl/gsl_matrix.h>
-#include <gsl/gsl_vector.h>
-#include <gsl/gsl_blas.h>
 #include "agent.h"
 
 /*
@@ -25,15 +22,13 @@
  * prendiamo h di runge kutta = ts
  */
 
-int _agents_number = 6;
+int _agents_number = 2;
+
+int _neighborhood_array[2] = {1, 1};
 
 float h = 0.1;
 
 int N = 32768;
-
-double x0[6] = {0.00, 0.00, 0.00, 0.00, 0.00, 0.00};
-
-double z0[6] = {0.00, 0.00, 0.00, 0.00, 1.00, 0.00};
 
 typedef enum {
     log_debug = 1,
@@ -163,6 +158,15 @@ static msg recvMsg(int _socket) {
     return _M_msg;
 }
 
+static int neighborhood(int _id) {
+
+    int _neighborhood;
+
+    _neighborhood = _neighborhood_array[_id - 1];
+
+    return _neighborhood;
+}
+
 parametri_agent allocParamAgent(int _identity, char *_agent_router_ip, int _port_agent_to_router, int _port_router_to_agent) {
 
     parametri_agent _M_parametri_agent = (parametri_agent) malloc(sizeof (struct parametri_agent_t));
@@ -190,26 +194,16 @@ void *runAgent(void *_parametri_agent) {
 
     int _agent_neighborhood;
 
-    int i, c;
-
     msg _M_msg_in, _M_msg_out;
 
-    double x[4] = {0.00, 0.00, 0.00, 0.00};
-    double z[4] = {0.00, 0.00, 0.00, 0.00};
-    double r[4] = {0.00, 0.00, 0.00, 0.00};
-    double sx[4] = {0.00, 0.00, 0.00, 0.00};
-    double sz[4] = {0.00, 0.00, 0.00, 0.00};
+    double x[4], z[4];
 
+    double sx, sz;
+
+    int c, r, i;
+    
     FILE *agent_log;
     char agent_log_file_name[FILENAME_MAX];
-
-    gsl_matrix *_adjacency_matrix;
-    FILE *agent_adjacency_matrix_file;
-
-    _adjacency_matrix = gsl_matrix_alloc(_agents_number, _agents_number);
-    agent_adjacency_matrix_file = fopen("adjacency_matrix.txt", "r");
-    gsl_matrix_fscanf(agent_adjacency_matrix_file, _adjacency_matrix);
-    fclose(agent_adjacency_matrix_file);
 
     /*
      * Apertura del file di log
@@ -252,14 +246,7 @@ void *runAgent(void *_parametri_agent) {
      * Calcolo del numero di agent vicini attraverso l'analisi della adjacency_matrix
      */
 
-    _agent_neighborhood = 0;
-
-    for (i = 0; i < _agents_number; i++) {
-
-        _agent_neighborhood = _agent_neighborhood + (int) gsl_matrix_get(_adjacency_matrix, i, _identity - 1);
-
-        if (log_level & log_debug) fprintf(agent_log, "A%d: > gsl_matrix_get(%d,%d) = %d\n", _identity, i, _identity - 1, (int) gsl_matrix_get(_adjacency_matrix, i, _identity - 1));
-    };
+    _agent_neighborhood = neighborhood(_identity);
 
     if (log_level & log_debug) fprintf(agent_log, "A%d: > _agent_neighborhood = %d\n", _identity, _agent_neighborhood);
 
@@ -308,6 +295,7 @@ void *runAgent(void *_parametri_agent) {
 
     if (log_level & log_debug) fprintf(agent_log, "A%d: > snd (%d,%d,%2.8g,%2.8g) > %d\n", _identity, _M_msg_out->msg_id, _M_msg_out->msg_time, _M_msg_out->msg_x, _M_msg_out->msg_z, _port_agent_to_router);
 
+    /* goto loopend; */
 
     /*
      * Ciclo principale
@@ -319,118 +307,101 @@ void *runAgent(void *_parametri_agent) {
 
     if (log_level & log_debug) fprintf(agent_log, "A%d: ----- Loop Start -----\n", _identity);
 
-    x[0] = x0[_identity - 1];
-    z[0] = z0[_identity - 1];
+       if (_identity == 1) {
+
+        x[0] = 1.00;
+        z[0] = 0.00;
+
+    } else {
+
+        x[0] = 0.00;
+        z[0] = 0.00;
+
+    }
+
+    x[1] = 0.00;
+    x[2] = 0.00;
+    x[3] = 0.00;
+
+    z[1] = 0.00;
+    z[2] = 0.00;
+    z[3] = 0.00;
+
+    sx = 0.00;
+    sz = 0.00;
+    r = 0;
 
     for (c = 0; c < N; c++) {
 
         if (log_level & log_debug) fprintf(agent_log, "A%d: > i = %d\n", _identity, c);
 
-        /*
-         * snd x
-         */
+        fprintf(agent_log, "%2.8g %2.8g\n", x[0], z[0]);
+        
+        for (i = 0; i < 5; i++) {
+            /*
+             * snd x
+             */
 
-        _M_msg_out->msg_time = 0;
-        _M_msg_out->msg_x = x[0];
-        _M_msg_out->msg_z = z[0];
-        sendMsg(agent_to_router_socket_, _M_msg_out);
-        if (log_level & log_normal) fprintf(agent_log, "%2.8g %2.8g\n", _M_msg_out->msg_x, _M_msg_out->msg_z);
-        if (log_level & log_details) fprintf(agent_log, "A%d: > snd (%d,%d,%2.8g,%2.8g)\n", _identity, _M_msg_out->msg_id, _M_msg_out->msg_time, _M_msg_out->msg_x, _M_msg_out->msg_z);
+            _M_msg_out->msg_time = i;
 
-        /*
-         * k1
-         */
+            _M_msg_out->msg_x = x[i];
+            _M_msg_out->msg_z = z[i];
 
-        while (r[0] < _agent_neighborhood) {
-            _M_msg_in = recvMsg(router_to_agent_socket_);
-            if (log_level & log_details) fprintf(agent_log, "A%d: > rcv (%d,%d,%2.8g,%2.8g)\n", _identity, _M_msg_in->msg_id, _M_msg_out->msg_time, _M_msg_in->msg_x, _M_msg_in->msg_z);
-            sx[_M_msg_in->msg_time] = sx[_M_msg_in->msg_time] + _M_msg_in->msg_x;
-            sz[_M_msg_in->msg_time] = sz[_M_msg_in->msg_time] + _M_msg_in->msg_z;
-            r[_M_msg_in->msg_time]++;
+            sendMsg(agent_to_router_socket_, _M_msg_out);
+
+            
+            if (log_level & log_details) fprintf(agent_log, "A%d: > snd (%d,%d,%2.8g,%2.8g)\n", _identity, _M_msg_out->msg_id, _M_msg_out->msg_time, _M_msg_out->msg_x, _M_msg_out->msg_z);
+
+            /*
+             * k1
+             */
+
+            while (r < _agent_neighborhood) {
+
+                _M_msg_in = recvMsg(router_to_agent_socket_);
+
+                if (log_level & log_details) fprintf(agent_log, "A%d: > rcv (%d,%d,%2.8g,%2.8g)\n", _identity, _M_msg_in->msg_id, _M_msg_out->msg_time, _M_msg_in->msg_x, _M_msg_in->msg_z);
+
+                sx = sx + _M_msg_in->msg_x - x[i];
+                sz = sz + _M_msg_in->msg_z - z[i];
+                r++;
+            }
+
+
+            switch (i) {
+
+                case 0:
+                    x[1] = -sz;
+                    z[1] = sx;
+                    break;
+
+                case 1:
+                    x[2] = x[1] - h * sz / 2;
+                    z[2] = z[1] + h * sx / 2;
+                    break;
+
+                case 2:
+                    x[3] = x[1] - h * sz / 2;
+                    z[3] = z[1] + h * sx / 2;
+                    break;
+
+                case 3:
+                    x[0] = x[0] + h * (x[1] + x[2] + x[3] - h * sz / 2) / 3;
+                    z[0] = z[0] + h * (z[1] + z[2] + z[3] + h * sx / 2) / 3;
+                    break;
+
+            }
+
+            sx = 0;
+            sz = 0;
+            r = 0;
+
         }
-
-
-        x[1] = r[0] * z[0] - sz[0];
-        z[1] = sx[0] - r[0] * x[0];
-        sx[0] = 0;
-        sz[0] = 0;
-        r[0] = 0;
-
-        _M_msg_out->msg_time = 1;
-        _M_msg_out->msg_x = x[1];
-        _M_msg_out->msg_z = z[1];
-        sendMsg(agent_to_router_socket_, _M_msg_out);
-        if (log_level & log_details) fprintf(agent_log, "A%d: > snd (%d,%d,%2.8g,%2.8g)\n", _identity, _M_msg_out->msg_id, _M_msg_out->msg_time, _M_msg_out->msg_x, _M_msg_out->msg_z);
-
-        /*
-         * k2
-         */
-
-        while (r[1] < _agent_neighborhood) {
-            _M_msg_in = recvMsg(router_to_agent_socket_);
-            if (log_level & log_details) fprintf(agent_log, "A%d: > rcv (%d,%d,%2.8g,%2.8g)\n", _identity, _M_msg_in->msg_id, _M_msg_out->msg_time, _M_msg_in->msg_x, _M_msg_in->msg_z);
-            sx[_M_msg_in->msg_time] = sx[_M_msg_in->msg_time] + _M_msg_in->msg_x;
-            sz[_M_msg_in->msg_time] = sz[_M_msg_in->msg_time] + _M_msg_in->msg_z;
-            r[_M_msg_in->msg_time]++;
-        }
-
-        x[2] = x[1] + h * (r[1] * z[1] - sz[1]) / 2;
-        z[2] = z[1] + h * (sx[1] - r[1] * x[1]) / 2;
-        sx[1] = 0;
-        sz[1] = 0;
-        r[1] = 0;
-
-        _M_msg_out->msg_time = 2;
-        _M_msg_out->msg_x = x[2];
-        _M_msg_out->msg_z = z[2];
-        sendMsg(agent_to_router_socket_, _M_msg_out);
-        if (log_level & log_details) fprintf(agent_log, "A%d: > snd (%d,%d,%2.8g,%2.8g)\n", _identity, _M_msg_out->msg_id, _M_msg_out->msg_time, _M_msg_out->msg_x, _M_msg_out->msg_z);
-
-        /*
-         * k3
-         */
-
-        while (r[2] < _agent_neighborhood) {
-            _M_msg_in = recvMsg(router_to_agent_socket_);
-            if (log_level & log_details) fprintf(agent_log, "A%d: > rcv (%d,%d,%2.8g,%2.8g)\n", _identity, _M_msg_in->msg_id, _M_msg_out->msg_time, _M_msg_in->msg_x, _M_msg_in->msg_z);
-            sx[_M_msg_in->msg_time] = sx[_M_msg_in->msg_time] + _M_msg_in->msg_x;
-            sz[_M_msg_in->msg_time] = sz[_M_msg_in->msg_time] + _M_msg_in->msg_z;
-            r[_M_msg_in->msg_time]++;
-        }
-
-        x[3] = x[1] + h * (r[2] * z[2] - sz[2]) / 2;
-        z[3] = z[1] + h * (sx[2] - r[2] * x[2]) / 2;
-        sx[2] = 0;
-        sz[2] = 0;
-        r[2] = 0;
-
-        _M_msg_out->msg_time = 3;
-        _M_msg_out->msg_x = x[3];
-        _M_msg_out->msg_z = z[3];
-        sendMsg(agent_to_router_socket_, _M_msg_out);
-        if (log_level & log_details) fprintf(agent_log, "A%d: > snd (%d,%d,%2.8g,%2.8g)\n", _identity, _M_msg_out->msg_id, _M_msg_out->msg_time, _M_msg_out->msg_x, _M_msg_out->msg_z);
-
-        /*
-         * k4, x
-         */
-
-        while (r[3] < _agent_neighborhood) {
-            _M_msg_in = recvMsg(router_to_agent_socket_);
-            if (log_level & log_details) fprintf(agent_log, "A%d: > rcv (%d,%d,%2.8g,%2.8g)\n", _identity, _M_msg_in->msg_id, _M_msg_out->msg_time, _M_msg_in->msg_x, _M_msg_in->msg_z);
-            sx[_M_msg_in->msg_time] = sx[_M_msg_in->msg_time] + _M_msg_in->msg_x;
-            sz[_M_msg_in->msg_time] = sz[_M_msg_in->msg_time] + _M_msg_in->msg_z;
-            r[_M_msg_in->msg_time]++;
-        }
-
-        x[0] = x[0] + h * (x[1] + x[2] + x[3] + h * (r[3] * z[3] - sz[3]) / 2) / 3;
-        z[0] = z[0] + h * (z[1] + z[2] + z[3] + h * (sx[3] - r[3] * x[3]) / 2) / 3;
-        sx[3] = 0;
-        sz[3] = 0;
-        r[3] = 0;
-
     }
 
     if (log_level & log_debug) fprintf(agent_log, "A%d: ----- Loop End ------\n", _identity);
+
+    /* loopend: */
 
     if (log_level & log_debug) fprintf(agent_log, "A%d: Signal:\n", _identity);
 
