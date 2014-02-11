@@ -15,6 +15,4 @@
     
     $ make all
 
-	$ sudo -i
-
-	# ./test_lab
+	$ sudo ./test_lab
