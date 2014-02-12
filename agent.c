@@ -27,7 +27,7 @@
 
 int _agents_number = 6;
 
-float h = 0.1;
+float h = 0.05;
 
 int N = 32768;
 
