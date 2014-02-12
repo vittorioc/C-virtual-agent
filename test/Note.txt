@@ -1,0 +1,5 @@
+
+	Per sapere quanti cicli sono stati effettuati:
+
+	$ wc -l agent_1.log
+
